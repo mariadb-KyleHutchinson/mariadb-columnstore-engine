@@ -42,9 +42,6 @@ CMAPI_DEFAULT_CONF_PATH = os.path.join(CMAPI_ROOT_PATH, CMAPI_CONFIG_FILENAME)
 # CMAPI config path
 CMAPI_CONF_PATH = os.path.join(MCS_ETC_PATH, CMAPI_CONFIG_FILENAME)
 
-# TOTP secret key
-SECRET_KEY = 'MCSIsTheBestEver'  # not just a random string! (base32)
-
 DEFAULT_FAILOVER_SAMPLING_INTERVAL_SECS = 30
 
 

@@ -1,14 +1,12 @@
 import logging
 from typing import Any, Dict, List, Optional, Union
 
-import pyotp
 import requests
 
 
 from cmapi_server.constants import (
     CMAPI_CONF_PATH,
     CURRENT_NODE_CMAPI_URL,
-    SECRET_KEY,
     UPGRADE_AGENT_PORT,
     _version
 )
@@ -53,18 +51,26 @@ class BaseClient:
 
     def _request(
         self, method: str, endpoint: str, data: Optional[Dict[str, Any]] = None,
-        throw_real_exp: bool = False
+        throw_real_exp: bool = False, api_key_override: Optional[str] = None,
     ) -> Union[Dict[str, Any], List[Any]]:
         """Make a request to the API.
 
         :param method: The HTTP method to use.
         :param endpoint: The API endpoint to call.
         :param data: The data to send with the request.
+        :param api_key_override: If set, use this value for the X-Api-Key
+            header instead of the one read from the local config. Used by
+            apikey-set on first install, where the local config has no
+            key yet and the new key authenticates itself via the empty-
+            config bootstrap branch of validate_api_key.
         :return: The response from the API.
         """
         url = self._build_url(endpoint)
-        cmapi_cfg_parser = get_config_parser(CMAPI_CONF_PATH)
-        key = get_current_key(cmapi_cfg_parser)
+        if api_key_override is not None:
+            key = api_key_override
+        else:
+            cmapi_cfg_parser = get_config_parser(CMAPI_CONF_PATH)
+            key = get_current_key(cmapi_cfg_parser)
         headers = {'x-api-key': key}
         if method in ['PUT', 'POST', 'DELETE']:
             headers['Content-Type'] = 'application/json'
@@ -218,15 +224,20 @@ class ClusterControllerClient(BaseClient):
     def set_api_key(self, api_key: str) -> Union[Dict[str, Any], Dict[str, str]]:
         """Set the API key for the cluster.
 
+        Authentication: send the current key as X-Api-Key to prove
+        possession. On first install (no key in local config) send the
+        new key itself; validate_api_key accepts it via the empty-config
+        bootstrap branch and installs it.
+
         :param api_key: The API key to set.
         :return: The response from the API.
         """
-        totp = pyotp.TOTP(SECRET_KEY)
-        payload = {
-            'api_key': api_key,
-            'verification_key': totp.now()
-        }
-        return self._request('PUT', 'apikey-set', payload)
+        current_key = get_current_key(get_config_parser(CMAPI_CONF_PATH))
+        header_key = current_key or api_key
+        return self._request(
+            'PUT', 'apikey-set', {'api_key': api_key},
+            api_key_override=header_key,
+        )
 
     def set_log_level(self, log_level: str) -> Union[Dict[str, Any], Dict[str, str]]:
         """Set the log level for the cluster.

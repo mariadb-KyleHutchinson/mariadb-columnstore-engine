@@ -16,7 +16,6 @@ from subprocess import CalledProcessError, PIPE, Popen, run
 from typing import Optional
 
 import cherrypy
-import pyotp
 import requests
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
@@ -39,7 +38,6 @@ from cmapi_server.constants import (
     MDB_SERVER_PACKAGE_NAME,
     REQUEST_TIMEOUT,
     S3_BRM_CURRENT_PATH,
-    SECRET_KEY,
     UPGRADE_DIR,
     UPGRADE_AGENT_MODULE,
     PkgType,
@@ -1524,33 +1522,27 @@ class ClusterController:
     @cherrypy.tools.timeit()
     @cherrypy.tools.json_in()
     @cherrypy.tools.json_out()
+    @cherrypy.tools.validate_api_key()  # pylint: disable=no-member
     def set_api_key(self):
         """Handler for /cluster/apikey-set (PUT)
 
-        Only for cli tool usage.
+        Only for cli tool usage. Requires the current API key in
+        X-Api-Key header (bootstrap behaviour applies when the local
+        config has no key yet; see validate_api_key).
         """
         func_name = 'cluster_set_api_key'
         module_logger.debug('Start setting API key to all nodes in cluster.')
         request = cherrypy.request
         request_body = request.json
         new_api_key = dequote(request_body.get('api_key', ''))
-        totp_key = request_body.get('verification_key', '')
 
-        if not totp_key or not new_api_key:
-            # not show which arguments in error message because endpoint for
-            # cli tool or internal usage only
+        if not new_api_key:
             raise_422_error(
                 module_logger, func_name, 'Missing required arguments.'
             )
 
-        totp = pyotp.TOTP(SECRET_KEY)
-        if not totp.verify(totp_key):
-            raise_422_error(
-                module_logger, func_name, 'Wrong verification key.'
-            )
-
         with cmapi_error_to_422(module_logger, func_name):
-            response = ClusterHandler.set_api_key(new_api_key, totp_key)
+            response = ClusterHandler.set_api_key(new_api_key)
 
         module_logger.debug(f'{func_name} returns {str(response)}')
         return response
@@ -1613,29 +1605,23 @@ class ApiKeyController:
     @cherrypy.tools.timeit()
     @cherrypy.tools.json_in()
     @cherrypy.tools.json_out()
+    @cherrypy.tools.validate_api_key()  # pylint: disable=no-member
     def set_api_key(self):
         """Handler for /node/apikey-set (PUT)
 
-        Only for cli tool usage.
+        Only for cli tool usage. Requires the current API key in
+        X-Api-Key header (bootstrap behaviour applies when the local
+        config has no key yet; see validate_api_key).
         """
         func_name = 'node_set_api_key'
         module_logger.debug('Start setting new node API key.')
         request = cherrypy.request
         request_body = request.json
         new_api_key = dequote(request_body.get('api_key', ''))
-        totp_key = request_body.get('verification_key', '')
 
-        if not totp_key or not new_api_key:
-            # not show which arguments in error message because endpoint for
-            # internal usage only
+        if not new_api_key:
             raise_422_error(
                 module_logger, func_name, 'Missing required arguments.'
-            )
-
-        totp = pyotp.TOTP(SECRET_KEY)
-        if not totp.verify(totp_key):
-            raise_422_error(
-                module_logger, func_name, 'Wrong verification key.'
             )
 
         config_filepath = request.app.config['config']['path']
